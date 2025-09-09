@@ -11,6 +11,7 @@ usage         = 0x61
 report_length = 32
 
 def reverse_bits(byte) -> int:
+    """Reverse the order of bits in a byte e.g. 00000001 -> 10000000"""
     return int('{:08b}'.format(byte)[::-1], 2)
 
 
@@ -58,6 +59,7 @@ def flip_horizontal(byteArray: bytearray, width=128, height=32) -> bytearray:
 
 
 def transform_data_for_lcd(byteArray, inverted=False) -> bytearray:
+    """Turns data from row-major to page major format"""
     width = 128
     height = 32
 
@@ -96,6 +98,7 @@ def get_raw_hid_interface():
     return interface
 
 def send_raw_report(data):
+    """serializes data into 18, 32 byte HID reports, sent sequentially to the device interface."""
     interface = get_raw_hid_interface()
 
     if interface is None: 
@@ -106,7 +109,7 @@ def send_raw_report(data):
     header_bytes = 2 # 1 for id code another for length of payload
     offset = 0
 
-    for i in range(18):
+    for i in range(18): # 
         ## Creat request report
         data_length = min(512-offset, 30)
 
