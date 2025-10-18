@@ -5,8 +5,6 @@ import bmp
 vendor_id     = 0x4273
 product_id    = 0x7563
 
-usage_page    = 0xFF60
-usage         = 0x61
 report_length = 32
 
 def reverse_bits(byte) -> int:
@@ -83,51 +81,55 @@ def transform_data_for_lcd(byteArray, inverted=False) -> bytearray:
     return transformed_data
 
 def get_raw_hid_interface():
-    device_interfaces = hid.enumerate(vendor_id, product_id)
-    raw_hid_interfaces = [i for i in device_interfaces if i['usage_page'] == usage_page and i['usage'] == usage]
+    print("Opening the device")
+    
+    try:
+        interface = hid.device()
+        interface.open(vendor_id, product_id)  # Boarsource/unicorne VendorID/ProductID
 
-    if len(raw_hid_interfaces) == 0:
+        print("Manufacturer: %s" % interface.get_manufacturer_string())
+        print("Product: %s" % interface.get_product_string())
+        print("Serial No: %s" % interface.get_serial_number_string())
+        
+        interface.set_nonblocking(1)
+        
+        return interface
+    except:
         return None
 
-    interface = hid.Device(path=raw_hid_interfaces[0]['path'])
-
-    print(f"Manufacturer: {interface.manufacturer}")
-    print(f"Product: {interface.product}")
-
-    return interface
-
-def send_raw_report(data):
-    """serializes data into 18, 32 byte HID reports, sent sequentially to the device interface."""
-    interface = get_raw_hid_interface()
-
-    if interface is None: 
-        print("No device found")
-        sys.exit(1)
+    return None
 
 
-    header_bytes = 2 # 1 for id code another for length of payload
+def send_raw_report(interface, data, include_report_id=True):
+    """
+    Sends 32-byte HID reports. If include_report_id=True, prepends 0x00 as the first byte
+    (for Windows hidapi compatibility).
+    """
+    REPORT_SIZE = 32
+    HEADER_BYTES = 3  # id_code + length + maybe report ID
+    ID_CODE = 0x09
+
     offset = 0
+    while offset < len(data):
+        data_length = min(len(data) - offset, REPORT_SIZE - HEADER_BYTES)
+        payload = bytearray([ID_CODE, data_length])
+        payload.extend(data[offset:offset + data_length])
+        payload.extend([0x00] * (REPORT_SIZE - len(payload)))
 
-    for i in range(18): # 
-        ## Creat request report
-        data_length = min(512-offset, 30)
-
-        request_data = [0x00] * (header_bytes + 1) # First byte is Report ID always 0x00 this device
-        request_data[1] = 0x09 # id_code (arbitrary, one of several id codes available)
-        request_data[2] = data_length   # length of the data
-        request_report = bytearray(request_data) # convert to byte array
-        request_report.extend(data[offset:offset + data_length]) # add payload
-        offset += data_length # increment offset
-        ###
+        if include_report_id:
+            report = bytearray([0x00])  # prepend report ID=0
+            report.extend(payload)
+        else:
+            report = payload
 
         try:
-            interface.write(bytes(request_report))
-
-            response_report = interface.read(report_length, timeout=1000)
-        except:
+            res = interface.write(bytes(report))
+        except Exception as e:
             interface.close()
+            return
 
-    interface.close()
+        offset += data_length
+
 
 if __name__ == '__main__':
     width, height, img_data = bmp.load("test.bmp")
@@ -153,5 +155,6 @@ if __name__ == '__main__':
             byte = (~byte & 0xFF) if inverted else byte
 
             transformed_data.append(byte)
-    
-    send_raw_report(transformed_data)
+
+    interface = get_raw_hid_interface()
+    send_raw_report(interface, transformed_data)
